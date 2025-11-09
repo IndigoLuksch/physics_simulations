@@ -15,6 +15,7 @@ import numba
 
 #---notes---
 '''
+• THERMODYNAMIC CALCULATIONS AND GRAIN GROWTH SIMULATIONS ARE NOT ACCURATE. THIS CODE IS PURELY USED TO INVESTIGATE TEMPERATURE FIELD DYNAMICS. GRAIN GROWTH SIMULATIONS CAN BE DISABLED
 • simulates pure elemental metals (i.e. T_solidus, T_liquidus are constant)
 • all units are SI
 • each pixel represents a voxel
