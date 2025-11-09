@@ -1,11 +1,11 @@
 # Investigating temperature field instabilities  
 
-$q = k∆T$ 
+$q_x = k\frac{dt}{dx}$ 
 
 where:  $q =$ heat flux per unit area, $k =$ thermal conductivity
 
 Temperature is updated using the formula:   
-$dT = \large\frac{q \times dt}{shc \times density \times pixdim}$
+$dT = \large\frac{q \times dt}{shc \times density \times pixdim^2}$
 
 If `dt` is too high or `pix_dim` is too low ($\rightarrow$ high SA:Vol ratio), heat will continue flowing between two pixels even after equilibrium should have been reached (since the simulation has not updated yet) resulting in heat conduction up a temperature gradient and overshooting of equilibrium temperature.
 
