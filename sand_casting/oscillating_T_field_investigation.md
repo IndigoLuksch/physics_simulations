@@ -1,6 +1,6 @@
 # Investigating temperature field instabilities  
 
-$q_x = k\frac{dt}{dx}$ 
+$q_x = k\frac{dT}{dx}$ 
 
 where:  $q =$ heat flux per unit area, $k =$ thermal conductivity
 
