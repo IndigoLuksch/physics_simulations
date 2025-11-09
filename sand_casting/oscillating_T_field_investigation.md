@@ -13,7 +13,7 @@ Fitting a straight line of best fit ($R^2 = 0.9991$) determines the ***condition
 
 $\frac{pixdim^2}{dt} > 3.297 \times 10^{-5}$
 
-This equation satisfies dT < a for some a, which may be dependent on simulation parameters e.g. mould temperature
+Note that the condition likely depends on mould parameters (which affect maximum $\frac{dT}{dx}$ to expect, for example).
 
 Code used to test stability limit: [oscillating_T_field_investigation.py](oscillating_T_field_investigation.py)
 
