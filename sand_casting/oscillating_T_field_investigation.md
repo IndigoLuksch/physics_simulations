@@ -15,4 +15,7 @@ Fitting a straight line of best fit ($R^2 = 0.9991$) determines that:
 
 condition for stability is $\frac{pixdim^2}{dt} > 3.297 \times 10^{-5}$
 
-![ALT](oscillation_stability_test.png)
+![oscillating_T_field_stability_test.png](oscillating_T_field_stability_test.png)
+
+![oscillating_T_field.gif](oscillating_T_field.gif)
+
