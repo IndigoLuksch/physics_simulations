@@ -168,7 +168,7 @@ def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf
             state = candidates[i]
 
             #physics
-            dG = calc_dG(current_state, state, x, y, grid, T_val,
+            dG = calc_dG(current_state, state, x, y, grid, T,
                          pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS)
 
             if state == current_state:
@@ -213,7 +213,7 @@ class Simulation:
     def __init__(self, config: SimulationConfig):
         self.cfg = config
 
-        # Initialize Grids
+        #initialise grids
         self.grid = np.zeros((config.x_dim, config.y_dim), dtype=np.int32)
         self.T_grid = np.ones_like(self.grid, dtype=np.float64) * config.T_initial
         self.phase_changes = np.zeros_like(self.grid, dtype=np.float64)

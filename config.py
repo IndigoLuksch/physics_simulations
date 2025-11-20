@@ -1,5 +1,6 @@
 import os
 import sys
+from dataclasses import dataclass, field
 
 #paths
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -9,25 +10,22 @@ OUTPUTS_DIR = os.path.join(PROJECT_ROOT, 'outputs')
 for directory in [OUTPUTS_DIR, PROJECT_ROOT]:
     os.makedirs(directory, exist_ok=True)
 
-
-from dataclasses import dataclass
-import os
-
 @dataclass
 class SimulationConfig:
     #---simulation parameters---
-    x_dim: int = 10
-    y_dim: int = 10
+    x_dim: int = 30
+    y_dim: int = 30
     pix_dim: float = 2e-5
     dt: float = 7e-7
     simulation_time: float = 1.0
 
     #---animation and tuning---
+    ani_fps: float = 60
+    ani_duration: float = 20
+
     q_reduction: float = 1.0
     latent_heat_reduction: float = 0.0
     same_state_pref: float = 10.0
-    ani_fps: float = 60
-    ani_duration: float = 20
 
     #---material properties (default: Al)---
     T_melt: float = 933.0  # K
