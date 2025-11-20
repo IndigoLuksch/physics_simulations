@@ -91,6 +91,3 @@ def test_T_oscillation(T_grid_history, window, pix_to_test=3):
                 else: return False
             else: return False
     return None
-
-
-
