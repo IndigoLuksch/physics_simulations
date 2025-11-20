@@ -64,8 +64,6 @@ class SimulationConfig:
     @classmethod
     def from_material(cls, material_name: str):
         if material_name == 'Al':
-            # Only pass the FUNDAMENTAL properties.
-            # Derived math happens automatically in __post_init__
             return cls(
                 T_melt=933,
                 k_LS=230,
