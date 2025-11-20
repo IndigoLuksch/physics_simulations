@@ -1,15 +1,10 @@
+#only import numerical libraries -- importing matplotlib and defining animation function here could cause problems e.g. if performing parameter sweep
 import numba
 import numpy as np
 import random
+import sys
 
 from config import SimulationConfig
-
-#---Courant-Friedrichs-Lewy condition---
-def Courant_Friedrichs_Lewy_condition():
-    if np.max(k_LS) * dt / (pix_dim**2 * shc * density) > 0.25 * 1.05: #0.25 with a slight buffer
-        print(f"np.max(k_LS) * dt / (pix_dim**2 * shc * density) = {np.max(k_LS) * dt / (pix_dim**2 * shc * density)} > 0.25\n\nCourant-Friedrichs-Lewy condition not met --> unstable temperature field expected\ndecrease dt or increase pix_dim")
-        sys.exit()
-    else: print(f"np.max(k_LS) * dt / (pix_dim**2 * shc * density) = {np.max(k_LS) * dt / (pix_dim**2 * shc * density)} < 0.25\n\nCourant-Friedrichs-Lewy condition met")
 
 #determine if state is L (0) or S (1)
 @numba.jit
@@ -40,10 +35,9 @@ def calc_E_srf(state, x, y, grid, E_srf_SS, E_srf_LS):
                     new_E_srf += E_srf_LS
     return new_E_srf
 
-
-#calculate ∆G for state change at one site
 @numba.jit
 def calc_dG(state_1, state_2, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n):
+    """calculate ∆G for state change at one site"""
     #state_1 = old state, state_2 = proposed new state
     #find E_srf contribution (penalty)
     initial_E_srf = calc_E_srf(state_1, x, y, grid)
@@ -59,7 +53,6 @@ def calc_dG(state_1, state_2, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n):
     return dG
     #returns dG per atom, on average
 
-#test for temperature oscillations (instability)
 @numba.jit
 def test_T_oscillation(T_current, T_prev_1, T_prev_2, x_dim, y_dim, window=0.1, pix_to_test=3):
     """detects if temperature field is oscillating (not physically correct)"""
@@ -78,8 +71,7 @@ def test_T_oscillation(T_current, T_prev_1, T_prev_2, x_dim, y_dim, window=0.1, 
                 return True
     return False
 
-#temperature loop
-def update_temperature(T_grid, grid, phase_changes, k_LS, h_Sm, h_Lm, pix_dim, density, dH_LS, dt, shc, q_reduction):
+def update_temperature(T_grid, grid, phase_changes, T_mould, k_LS, h_Sm, h_Lm, pix_dim, density, dH_LS, dt, shc, q_reduction):
     T_new = T_grid.copy()
 
     #---internal conduction---
@@ -130,17 +122,138 @@ def get_neighbors(x, y, grid, x_dim, y_dim):
                     neighbors.append(grid[nx, ny])
     return neighbors
 
+@numba.jit
+def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
+    phase_changes = np.zeros((x_dim, y_dim), dtype=np.float64)
+
+    candidates = np.zeros(7, dtype=np.int32)
+    weights = np.zeros(7, dtype=np.float64)
+
+    batch_size = int(x_dim * y_dim * 0.05)
+
+    for _ in range(batch_size):
+        #random pixel to simualate
+        x = random.randint(0, x_dim - 1)
+        y = random.randint(0, y_dim - 1)
+
+        current_state = grid[x, y]
+        T = T_grid[x, y]
+
+        #---create list of candidates---
+        count = 0
+
+        #add current state, liquid, random stte
+        candidates[count] = current_state
+        count += 1
+        candidates[count] = 0
+        count += 1
+        candidates[count] = random.randint(1, x_dim * y_dim)
+        count += 1
+
+        #add neighbours
+        dx_dy = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        for dx, dy in dx_dy:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < x_dim and 0 <= ny < y_dim:
+                neighbor = grid[nx, ny]
+                if neighbor > 0:
+                    candidates[count] = neighbor
+                    count += 1
+
+        #---calculate weights---
+        #no need to remove duplicates -- it does not affect probabilities
+        sum_weights = 0.0
+
+        for i in range(count):
+            state = candidates[i]
+
+            #physics
+            dG = calc_dG(current_state, state, x, y, grid, T_val,
+                         pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS)
+
+            if state == current_state:
+                dG *= same_state_pref
+
+            #exponential with guardrails
+            exponent = -dG / (k_B * T)
+            if exponent > 10:
+                prob = 22026.0  #~exp(10)
+            elif exponent < -10:
+                prob = 0.000045  #~exp(-10)
+            else:
+                prob = np.exp(exponent)
+
+
+            weights[i] = prob
+            sum_weights += prob
+
+        #---random selection---
+        if sum_weights > 0:
+            r = random.random() * sum_weights
+            cumulative = 0.0
+            new_state = current_state
+
+            for i in range(count):
+                if weights[i] > 0:  # Skip duplicates/zeros
+                    cumulative += weights[i]
+                    if r <= cumulative:
+                        new_state = candidates[i]
+                        break
+
+            #if change in state, update things
+            if new_state != current_state:
+                phase_new = phase(new_state)
+                phase_old = phase(current_state)
+                phase_changes[x, y] = phase_new - phase_old
+                grid[x, y] = new_state
+
+    return phase_changes
+
 class Simulation:
     def __init__(self, config: SimulationConfig):
         self.cfg = config
 
-        #initialise grids
+        # Initialize Grids
         self.grid = np.zeros((config.x_dim, config.y_dim), dtype=np.int32)
         self.T_grid = np.ones_like(self.grid, dtype=np.float64) * config.T_initial
         self.phase_changes = np.zeros_like(self.grid, dtype=np.float64)
 
-        #history for oscillation detection
+        # History
         self.T_history = []
+
+    def Courant_Friedrichs_Lewy_condition(self, k_LS, dt, pix_dim, shc, density):
+        "Courant-Friedrichs-Lewy condition"
+
+        if k_LS * dt / (pix_dim ** 2 * shc * density) > 0.25 * 1.05:  # 0.25 with a slight buffer
+            print(
+                f"np.max(k_LS) * dt / (pix_dim**2 * shc * density) = {np.max(k_LS) * dt / (pix_dim ** 2 * shc * density)} > 0.25\n\nCourant-Friedrichs-Lewy condition not met --> unstable temperature field expected\ndecrease dt or increase pix_dim")
+            sys.exit()
+        else:
+            print(
+                f"np.max(k_LS) * dt / (pix_dim**2 * shc * density) = {np.max(k_LS) * dt / (pix_dim ** 2 * shc * density)} < 0.25\n\nCourant-Friedrichs-Lewy condition met")
+
+    def step(self):
+        """1 simulation step: monte carlo + temperature"""
+
+        # 1. Monte Carlo (Grain Growth)
+        self.phase_changes = monte_carlo_step(
+            self.grid, self.T_grid,
+            self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
+            self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS,
+            self.cfg.k_B, self.cfg.same_state_pref
+        )
+
+        # 2. Thermal Update
+        self.T_grid = update_temperature(
+            self.T_grid, self.grid, self.phase_changes, self.T_mould,
+            self.cfg.dt, self.cfg.pix_dim, self.cfg.density, self.cfg.shc,
+            self.cfg.k_LS, self.cfg.dH_LS, self.cfg.h_Lm, self.cfg.h_Sm, self.cfg.q_reduction
+        )
+
+        # 3. History Logging (Optimized: Only keep last 3)
+        self.T_history.append(self.T_grid.copy())  # Use copy!
+        if len(self.T_history) > 3:
+            self.T_history.pop(0)
 
     def detect_oscillation(self):
         """
@@ -157,80 +270,3 @@ class Simulation:
                 self.cfg.x_dim,
                 self.cfg.y_dim
             )
-
-def update(frame):
-    for _ in range(steps_per_frame):
-        global grid, im, num_frames, phase_changes, T_grid, batch_size
-
-        phase_changes = np.zeros_like(phase_changes)
-        selected_sites = [[random.randint(0,x_dim-1), random.randint(0,y_dim-1)] for _ in range(batch_size)]
-
-        #loop across selected sites
-
-        for x, y in selected_sites:
-            #create list of possible states
-            possible_states = get_neighbors(x, y, grid, x_dim, y_dim)
-            possible_states.append(grid[x,y]) #add current state
-            possible_states.append(0) #add L
-
-            possible_states.append(random.randint(1,x_dim*y_dim)) #add new grain
-
-            possible_states = list(set(possible_states)) #remove duplicates
-            possible_states = [int(i) for i in possible_states]
-
-            #calc probability of each state
-            state_probability = []
-            for state in possible_states:
-                dG = calc_dG(grid[x,y], state, x, y, grid, T_grid) #apply function
-
-                if state == grid[x,y]: #if no change
-                    dG *= same_state_pref #increase probability
-
-                exponent = -dG / (k_B * T_grid[x,y])
-                if exponent > 10: probability = np.exp(10)
-                else: probability = np.exp(exponent) #Boltzmann distribution
-
-                state_probability.append(probability)
-            #print(f"dG = {dG}, possible_states = {possible_states}, state_probability = {state_probability}, T = {T_grid[x,y]}")
-
-            #select state
-            if np.sum(state_probability) > 0:
-                index = random.choices(np.arange(0,len(possible_states),1), state_probability)[0]
-                new_state = (possible_states[index]) #int? plt.imshow doesnt like
-                #print(f"new_state: {new_state}")
-
-                #if state changes
-                if new_state != grid[x,y]:
-                    phase_change = phase(new_state) - phase(grid[x,y])
-                    phase_changes[x,y] = phase_change #update phase_changes matrix
-                    grid[x,y] = new_state #updates state
-                #print(f"new_grid_xy: {grid[x,y]}")
-
-    if frame % 1 == 0:
-        T_grid = update_temperature(T_grid, grid, phase_changes, k_LS, h_Sm, h_Lm, pix_dim, density, dH_LS, dt, shc, q_reduction)
-        T_grid_history.append(T_grid)
-
-        #print(T_grid[0,5])
-
-
-
-        oscillation = test_T_oscillation(T_grid_history, 0.1)
-        if oscillation:
-            print("OSCILLATION DETECTED")
-
-
-    #stats
-    '''
-    unique, counts = np.unique(grid, return_counts=True)
-    num_crystals_add = len(unique)
-    count_dict = dict(zip(unique, counts))
-    percent_L_add = 100*count_dict[0]/len(grid)
-    num_crystals.append(num_crystals_add)
-    percent_L.append(percent_L_add)
-    '''
-    grid = grid.astype(np.float32)
-    #im_grain = ax.imshow(grid, cmap='hsv', vmin=0)
-
-    im_grain.set_data(grid)
-    im_temp.set_data(T_grid)
-    return [im_grain, im_temp]
