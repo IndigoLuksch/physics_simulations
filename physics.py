@@ -89,6 +89,10 @@ def test_T_oscillation(T_grid_history, window, pix_to_test=3):
             else: return False
     return None
 
+class Simulation:
+    def __init__(self, config: SimulationConfig):
+        self.cfg = config
+
 #temperature loop
 def update_temperature(T_grid, grid, phase_changes, k_LS, h_Sm, h_Lm, pix_dim, density, dH_LS, dt, shc, q_reduction):
     T_new = T_grid.copy()

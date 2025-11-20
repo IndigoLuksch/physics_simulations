@@ -9,58 +9,73 @@ OUTPUTS_DIR = os.path.join(PROJECT_ROOT, 'outputs')
 for directory in [OUTPUTS_DIR, PROJECT_ROOT]:
     os.makedirs(directory, exist_ok=True)
 
-#PARAMETERS
 
-#---simulation parameters---
-x_dim = 10 #arb
-y_dim = 10 #arb
-pix_dim = 2e-5 #side length of each pixel
-dt = 7e-7
-simulation_time = 1
-q_reduction = 1
-latent_heat_reduction = 0
-same_state_pref = 10
+from dataclasses import dataclass
+import os
 
-#---animation parameters---
-ani_fps = 60
-ani_duration = 20
+@dataclass
+class SimulationConfig:
+    #---simulation parameters---
+    x_dim: int = 10
+    y_dim: int = 10
+    pix_dim: float = 2e-5
+    dt: float = 7e-7
+    simulation_time: float = 1.0
 
-#processed parameters
-steps_per_frame = max(1, int(simulation_time / (dt * ani_fps * ani_duration) ) )
+    #---animation and tuning---
+    q_reduction: float = 1.0
+    latent_heat_reduction: float = 0.0
+    same_state_pref: float = 10.0
+    ani_fps: float = 60
+    ani_duration: float = 20
 
-#---constants---
-k_B = 1.38e-23
+    #---material properties (default: Al)---
+    T_melt: float = 933.0  # K
+    T_initial: float = 1173.0  # K
+    T_mould: float = 303.0  # K
 
-#---material parameters---
-material = 'Al'
+    k_LS: float = 230.0  # W/(m*K)
+    h_Sm: float = 0.5
+    h_Lm: float = 1.3
+    dH_LS: float = 1.067e9  # J/m^3
 
-if material == 'Al':
-    #PURE ALUMINIUM
-    #phase diagram
-    T_melt = 660 + 273
-    #heat flow -- note thermal conductivity is for temp gradient, heat transfer coefficient is for interface
-    k_LS = 230          #W/(m*K) thermal conductivity: S/L<-->S/L [7]
-    h_Sm = 0.5          #heat transfer coefficient: S<-->mould [6]
-    h_Lm = 1.3          #heat transfer coefficient: L<-->mould [6]
+    E_srf_SS: float = 0.3
+    density: float = 2700.0
+    shc: float = 921.0
 
-    #energy
-    dH_LS = 1067000000  #J/(m^3)
-    E_srf_SS = 0.3         #surface energy between two grains (assume independent of grain angle) (assume E_srf_LS = 0) (source: [1])
-    E_srf_SS = 2 #delete this
-    E_srf_LS = 0.2 * E_srf_SS
-    #other
-    density = 2700      #kg/(m^3)
-    shc = 921  # J/(K kg)
-    n = 5.979e28 * pix_dim**3  #atoms per pixel (mm^3)
-    #casting parameters
-    T_initial = 900 +273 #change to 1500°C
-    T_mold_preheat = 1000 + 273 # <--- not used currently
-    T_mould = 30 + 273        #(assume constant)
+    # --- Constants ---
+    k_B: float = 1.38e-23
 
-    #q = -k ∆T (W/m^2)
-else:
-    print("Material choice not recognised. Please retry.\n\n[EXECUTION STOPPED]")
-    sys.exit()
+    #---calculated values---
+    # init=False means "Do not ask for this in the constructor"
+    n: float = field(init=False)
+    steps_per_frame: int = field(init=False)
+    dS_LS: float = field(init=False)
+    E_srf_LS: float = field(init=False)
 
-#processed parameters
-dS_LS = dH_LS / T_melt
+    def __post_init__(self):
+        """"calculates derived values"""
+
+        self.dS_LS = self.dH_LS / self.T_melt
+        self.n = 5.979e28 * (self.pix_dim ** 3)
+        self.steps_per_frame = max(1, int(self.simulation_time / (self.dt * self.ani_fps * self.ani_duration)))
+        self.E_srf_LS = 0.2 * self.E_srf_SS
+
+    @classmethod
+    def from_material(cls, material_name: str):
+        if material_name == 'Al':
+            # Only pass the FUNDAMENTAL properties.
+            # Derived math happens automatically in __post_init__
+            return cls(
+                T_melt=933,
+                k_LS=230,
+                h_Sm=0.5,
+                h_Lm=1.3,
+                dH_LS=1.067e9,
+                E_srf_SS=0.3,
+                density=2700,
+                shc=921,
+                T_initial=1173,
+                T_mould=303
+            )
+        raise ValueError(f"Unknown material: {material_name}")
