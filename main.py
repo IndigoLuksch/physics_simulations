@@ -25,11 +25,13 @@ cmap.set_under('black')  #liqiud (0) --> black
 vmax = sim.cfg.x_dim * sim.cfg.y_dim
 im_grains = ax1.imshow(sim.grid, cmap=cmap, vmin=1, vmax=vmax, origin='upper', interpolation='nearest') #vmin=1 --> 0 maps to 'under' colour (black)
 ax1.set_title("Grain Growth Simulation")
+ax1.axis('off')
 
 #temperature
 im_temp = ax2.imshow(sim.T_grid, cmap='plasma', vmin=0)
 plt.title('Temperature')
 plt.colorbar(im_temp, ax=ax2, label='Temperature / K')
+text = ax2.text(0,33,[])
 ax2.axis('off')
 
 #progress bar
@@ -46,6 +48,7 @@ def update(frame):
     T_grid_copy = sim.T_grid.copy()
     im_grains.set_data(grid_copy)
     im_temp.set_data(T_grid_copy)
+    text.set_text(f"Average temperature = {np.mean(T_grid_copy):.2f} K")
 
     if sim.detect_oscillation():
         print("Oscillation detected!")
@@ -74,4 +77,4 @@ ani.save(full_path,
          dpi=150) #resolution
 pbar.close()
 
-print(sim.T_history.copy()[-1][0,10])
+print(f"last temperature value at [0,10]: {sim.T_history.copy()[-1][0,10]}\ntemperature drop here = {cfg.T_initial - sim.T_history.copy()[-1][0,10]}")

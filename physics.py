@@ -42,14 +42,14 @@ def calc_dG(state_1, state_2, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n, E_sr
     #find E_srf contribution (penalty)
     initial_E_srf = calc_E_srf(state_1, x, y, grid, E_srf_SS, E_srf_LS)
     new_E_srf = calc_E_srf(state_2, x, y, grid, E_srf_SS, E_srf_LS)
-    dE_srf = (new_E_srf - initial_E_srf) * 40
+    dE_srf = (new_E_srf - initial_E_srf)
 
 
     state_1 = phase(state_1) #must be after E_srf loop
     state_2 = phase(state_2)
 
     #dG = -(dH_LS - T_grid[x,y] * dS_LS) * (state_2 - state_1) * (pix_dim**3) / n + dE_srf * (pix_dim**2) / (6 * n ** (2/3)) #apparently last denominator should just be n
-    dG = -(dH_LS - T_grid[x,y] * dS_LS) * (state_2 - state_1) * (pix_dim**3) / n + dE_srf * (pix_dim**2) / n #apparently last denominator should just be n
+    dG = -(dH_LS - T_grid[x,y] * dS_LS) * (state_2 - state_1) * (pix_dim**3) + dE_srf * (pix_dim**2) #apparently last denominator should just be n
     return dG
     #returns dG per atom, on average
 
@@ -101,7 +101,7 @@ def update_temperature(T_grid, grid, phase_changes, T_mould, k_LS, h_Sm, h_Lm, p
 
     #---latent heat---
     latent_heat_T_change = (phase_changes * dH_LS) / (shc * density)
-    T_new += latent_heat_T_change
+    #T_new += latent_heat_T_change
 
     '''
     sigma = [0.5, 0.5]
@@ -235,21 +235,19 @@ class Simulation:
         """1 simulation step: monte carlo + temperature"""
 
         # 1. Monte Carlo (Grain Growth)
-        '''
+
         self.phase_changes = monte_carlo_step(
-            self.grid, self.T_grid,
-            self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
-            self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS,
-            self.cfg.k_B, self.cfg.same_state_pref
+            self.grid, self.T_grid, self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
+            self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
         )
-        '''
+
 
         # 2. Thermal Update
         self.T_grid = update_temperature(
-            self.T_grid, self.grid, self.phase_changes, self.cfg.T_mould,
-            self.cfg.dt, self.cfg.pix_dim, self.cfg.density, self.cfg.shc,
-            self.cfg.k_LS, self.cfg.dH_LS, self.cfg.h_Lm, self.cfg.h_Sm, self.cfg.q_reduction
+            self.T_grid, self.grid, self.phase_changes, self.cfg.T_mould,self.cfg.k_LS, self.cfg.h_Sm, self.cfg.h_Lm,
+            self.cfg.pix_dim, self.cfg.density, self.cfg.dH_LS, self.cfg.dt, self.cfg.shc, self.cfg.q_reduction
         )
+
 
         # 3. History Logging (Optimized: Only keep last 3)
         self.T_history.append(self.T_grid.copy())  # Use copy!
