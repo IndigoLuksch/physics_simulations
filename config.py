@@ -13,17 +13,17 @@ for directory in [OUTPUTS_DIR, PROJECT_ROOT]:
 @dataclass
 class SimulationConfig:
     #---simulation parameters---
-    x_dim: int = 30
-    y_dim: int = 30
+    x_dim: int = 60
+    y_dim: int = 60
     pix_dim: float = 2e-5
-    dt: float = 7e-7
-    simulation_time: float = 1.0
+    dt: float = 5e-7
+    simulation_time: float = 60
 
     #---animation and tuning---
     ani_fps: float = 60
     ani_duration: float = 20
 
-    q_reduction: float = 1.0
+    q_reduction: float = 1.0 #1.0 is physically correct
     latent_heat_reduction: float = 0.0
     same_state_pref: float = 10.0
 

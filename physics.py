@@ -36,12 +36,12 @@ def calc_E_srf(state, x, y, grid, E_srf_SS, E_srf_LS):
     return new_E_srf
 
 @numba.jit
-def calc_dG(state_1, state_2, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n):
+def calc_dG(state_1, state_2, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n, E_srf_SS, E_srf_LS):
     """calculate ∆G for state change at one site"""
     #state_1 = old state, state_2 = proposed new state
     #find E_srf contribution (penalty)
-    initial_E_srf = calc_E_srf(state_1, x, y, grid)
-    new_E_srf = calc_E_srf(state_2, x, y, grid)
+    initial_E_srf = calc_E_srf(state_1, x, y, grid, E_srf_SS, E_srf_LS)
+    new_E_srf = calc_E_srf(state_2, x, y, grid, E_srf_SS, E_srf_LS)
     dE_srf = (new_E_srf - initial_E_srf) * 40
 
 
@@ -101,7 +101,7 @@ def update_temperature(T_grid, grid, phase_changes, T_mould, k_LS, h_Sm, h_Lm, p
 
     #---latent heat---
     latent_heat_T_change = (phase_changes * dH_LS) / (shc * density)
-    T_new += latent_heat_T_change * latent_heat_reduction
+    T_new += latent_heat_T_change
 
     '''
     sigma = [0.5, 0.5]
@@ -168,8 +168,7 @@ def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf
             state = candidates[i]
 
             #physics
-            dG = calc_dG(current_state, state, x, y, grid, T,
-                         pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS)
+            dG = calc_dG(current_state, state, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n, E_srf_SS, E_srf_LS)
 
             if state == current_state:
                 dG *= same_state_pref
@@ -236,16 +235,18 @@ class Simulation:
         """1 simulation step: monte carlo + temperature"""
 
         # 1. Monte Carlo (Grain Growth)
+        '''
         self.phase_changes = monte_carlo_step(
             self.grid, self.T_grid,
             self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
             self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS,
             self.cfg.k_B, self.cfg.same_state_pref
         )
+        '''
 
         # 2. Thermal Update
         self.T_grid = update_temperature(
-            self.T_grid, self.grid, self.phase_changes, self.T_mould,
+            self.T_grid, self.grid, self.phase_changes, self.cfg.T_mould,
             self.cfg.dt, self.cfg.pix_dim, self.cfg.density, self.cfg.shc,
             self.cfg.k_LS, self.cfg.dH_LS, self.cfg.h_Lm, self.cfg.h_Sm, self.cfg.q_reduction
         )
