@@ -122,7 +122,7 @@ def get_neighbors(x, y, grid, x_dim, y_dim):
                     neighbors.append(grid[nx, ny])
     return neighbors
 
-@numba.jit
+@numba.jit(parallel=True)
 def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
     phase_changes = np.zeros((x_dim, y_dim), dtype=np.float64)
 
@@ -131,7 +131,7 @@ def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf
 
     batch_size = int(x_dim * y_dim * 0.05)
 
-    for _ in range(batch_size):
+    for _ in numba.prange(batch_size):
         #random pixel to simualate
         x = random.randint(0, x_dim - 1)
         y = random.randint(0, y_dim - 1)
