@@ -207,7 +207,6 @@ def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf
                 grid[x, y] = new_state
 
     return phase_changes
-'''UPDATE THIS TO RUN IN PARALLEL'''
 
 class Simulation:
     def __init__(self, config: SimulationConfig):
