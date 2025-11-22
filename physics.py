@@ -207,6 +207,7 @@ def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf
                 grid[x, y] = new_state
 
     return phase_changes
+'''UPDATE THIS TO RUN IN PARALLEL'''
 
 class Simulation:
     def __init__(self, config: SimulationConfig):
@@ -216,6 +217,8 @@ class Simulation:
         self.grid = np.zeros((config.x_dim, config.y_dim), dtype=np.int32)
         self.T_grid = np.ones_like(self.grid, dtype=np.float64) * config.T_initial
         self.phase_changes = np.zeros_like(self.grid, dtype=np.float64)
+
+        self.T_grid_diff = np.zeros_like(self.grid, dtype=np.float64)
 
         # History
         self.T_history = []
@@ -234,7 +237,7 @@ class Simulation:
     def step(self):
         """1 simulation step: monte carlo + temperature"""
 
-        # 1. Monte Carlo (Grain Growth)
+        #---monte carlo growth---
 
         self.phase_changes = monte_carlo_step(
             self.grid, self.T_grid, self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
@@ -242,14 +245,15 @@ class Simulation:
         )
 
 
-        # 2. Thermal Update
+        #---thermal update---
         self.T_grid = update_temperature(
             self.T_grid, self.grid, self.phase_changes, self.cfg.T_mould,self.cfg.k_LS, self.cfg.h_Sm, self.cfg.h_Lm,
             self.cfg.pix_dim, self.cfg.density, self.cfg.dH_LS, self.cfg.dt, self.cfg.shc, self.cfg.q_reduction
         )
 
+        self.T_grid_diff = self.T_grid.copy() - np.min(self.T_grid)
 
-        # 3. History Logging (Optimized: Only keep last 3)
+        #---history logging---
         self.T_history.append(self.T_grid.copy())  # Use copy!
         if len(self.T_history) > 3:
             self.T_history.pop(0)

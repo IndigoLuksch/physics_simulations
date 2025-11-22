@@ -28,7 +28,7 @@ ax1.set_title("Grain Growth Simulation")
 ax1.axis('off')
 
 #temperature
-im_temp = ax2.imshow(sim.T_grid, cmap='plasma', vmin=0)
+im_temp = ax2.imshow(sim.T_grid_diff, cmap='plasma', vmin=0)
 plt.title('Temperature')
 plt.colorbar(im_temp, ax=ax2, label='Temperature / K')
 text = ax2.text(0,33,[])
