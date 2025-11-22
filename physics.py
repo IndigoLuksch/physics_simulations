@@ -123,18 +123,16 @@ def get_neighbors(x, y, grid, x_dim, y_dim):
     return neighbors
 
 @numba.jit(parallel=True)
-def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
+def monte_carlo_step(grid, T_grid, coords, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
     phase_changes = np.zeros((x_dim, y_dim), dtype=np.float64)
 
-    candidates = np.zeros(7, dtype=np.int32)
-    weights = np.zeros(7, dtype=np.float64)
+    for j in numba.prange(len(coords)):
+        #memory allocation (specific to thread)
+        candidates = np.zeros(7, dtype=np.int32)
+        weights = np.zeros(7, dtype=np.float64)
 
-    batch_size = int(x_dim * y_dim * 0.05)
-
-    for _ in numba.prange(batch_size):
-        #random pixel to simualate
-        x = random.randint(0, x_dim - 1)
-        y = random.randint(0, y_dim - 1)
+        x = coords[j, 0]
+        y = coords[j, 1]
 
         current_state = grid[x, y]
         T = T_grid[x, y]
@@ -238,10 +236,44 @@ class Simulation:
 
         #---monte carlo growth---
 
-        self.phase_changes = monte_carlo_step(
-            self.grid, self.T_grid, self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
-            self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
+        # 1. Select Random Subset (e.g., 5% of pixels)
+        total_pixels = self.cfg.x_dim * self.cfg.y_dim
+        batch_size = int(total_pixels * 0.05)
+
+        # Use NumPy to efficiently select unique indices
+        # Note: This runs in object mode (outside JIT) or requires objmode block
+        flat_indices = np.random.choice(total_pixels, batch_size, replace=False)
+
+        # Convert to (x, y) coordinates
+        xs = flat_indices // self.cfg.y_dim
+        ys = flat_indices % self.cfg.y_dim
+
+        # 2. Split into Red and Black batches
+        # Red: (x+y) is even, Black: (x+y) is odd
+        mask_red = (xs + ys) % 2 == 0
+        mask_black = ~mask_red
+
+        # Create coordinate arrays shape (N, 2)
+        red_coords = np.column_stack((xs[mask_red], ys[mask_red]))
+        black_coords = np.column_stack((xs[mask_black], ys[mask_black]))
+
+        # 3. Run Parallel Updates Sequentially
+        # Pass 1: Update Red Pixels
+        pc_red = monte_carlo_step(
+            self.grid, self.T_grid, red_coords, self.cfg.x_dim, self.cfg.y_dim,
+            self.cfg.pix_dim, self.cfg.n, self.cfg.dH_LS, self.cfg.dS_LS,
+            self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
         )
+
+        # Pass 2: Update Black Pixels
+        pc_black = monte_carlo_step(
+            self.grid, self.T_grid, black_coords, self.cfg.x_dim, self.cfg.y_dim,
+            self.cfg.pix_dim, self.cfg.n, self.cfg.dH_LS, self.cfg.dS_LS,
+            self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
+        )
+
+        # Combine changes for temperature step
+        self.phase_changes = pc_red + pc_black
 
 
         #---thermal update---
