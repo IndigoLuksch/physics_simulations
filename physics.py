@@ -26,6 +26,8 @@ def calc_E_srf(state, x, y, grid, E_srf_SS, E_srf_LS):
             if 0 <= nx < x_dim and 0 <= ny < y_dim: #if neighbour pixel in grid
                 if grid[nx, ny] > 0 and grid[nx, ny] != state: #if different from new state and not L
                     new_E_srf += E_srf_SS
+                else:
+                    new_E_srf += E_srf_LS
     else: #if L
         dx_dy = [(-1, 0), (1, 0), (0, -1), (0, 1)]
         for dx, dy in dx_dy:
@@ -122,89 +124,97 @@ def get_neighbors(x, y, grid, x_dim, y_dim):
                     neighbors.append(grid[nx, ny])
     return neighbors
 
-@numba.jit(parallel=True)
-def monte_carlo_step(grid, T_grid, coords, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
+@numba.jit
+def monte_carlo_pass(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref, offset):
     phase_changes = np.zeros((x_dim, y_dim), dtype=np.float64)
 
-    for j in numba.prange(len(coords)):
-        #memory allocation (specific to thread)
-        candidates = np.zeros(7, dtype=np.int32)
-        weights = np.zeros(7, dtype=np.float64)
+    for x in numba.prange(x_dim):
+        start_y = (x + offset) % 2
 
-        x = coords[j, 0]
-        y = coords[j, 1]
+        for y in range(start_y, y_dim, 2): #stride=2
+            #---memory allocation---
+            candidates = np.zeros(7, dtype=np.int32)
+            weights = np.zeros(7, dtype=np.float64)
 
-        current_state = grid[x, y]
-        T = T_grid[x, y]
+            current_state = grid[x, y]
+            T = T_grid[x, y]
 
-        #---create list of candidates---
-        count = 0
+            #---create list of candidates---
+            count = 0
 
-        #add current state, liquid, random stte
-        candidates[count] = current_state
-        count += 1
-        candidates[count] = 0
-        count += 1
-        candidates[count] = random.randint(1, x_dim * y_dim)
-        count += 1
+            #add current state, liquid, random stte
+            candidates[count] = current_state
+            count += 1
+            candidates[count] = 0
+            count += 1
+            candidates[count] = random.randint(1, x_dim * y_dim)
+            count += 1
 
-        #add neighbours
-        dx_dy = [(-1, 0), (1, 0), (0, -1), (0, 1)]
-        for dx, dy in dx_dy:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < x_dim and 0 <= ny < y_dim:
-                neighbor = grid[nx, ny]
-                if neighbor > 0:
-                    candidates[count] = neighbor
-                    count += 1
+            #add neighbours
+            dx_dy = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+            for dx, dy in dx_dy:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < x_dim and 0 <= ny < y_dim:
+                    neighbor = grid[nx, ny]
+                    if neighbor > 0:
+                        candidates[count] = neighbor
+                        count += 1
 
-        #---calculate weights---
-        #no need to remove duplicates -- it does not affect probabilities
-        sum_weights = 0.0
-
-        for i in range(count):
-            state = candidates[i]
-
-            #physics
-            dG = calc_dG(current_state, state, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n, E_srf_SS, E_srf_LS)
-
-            if state == current_state:
-                dG *= same_state_pref
-
-            #exponential with guardrails
-            exponent = -dG / (k_B * T)
-            if exponent > 10:
-                prob = 22026.0  #~exp(10)
-            elif exponent < -10:
-                prob = 0.000045  #~exp(-10)
-            else:
-                prob = np.exp(exponent)
-
-
-            weights[i] = prob
-            sum_weights += prob
-
-        #---random selection---
-        if sum_weights > 0:
-            r = random.random() * sum_weights
-            cumulative = 0.0
-            new_state = current_state
+            #---calculate weights---
+            #no need to remove duplicates -- it does not affect probabilities
+            sum_weights = 0.0
 
             for i in range(count):
-                if weights[i] > 0:  # Skip duplicates/zeros
-                    cumulative += weights[i]
-                    if r <= cumulative:
-                        new_state = candidates[i]
-                        break
+                state = candidates[i]
 
-            #if change in state, update things
-            if new_state != current_state:
-                phase_new = phase(new_state)
-                phase_old = phase(current_state)
-                phase_changes[x, y] = phase_new - phase_old
-                grid[x, y] = new_state
+                #physics
+                dG = calc_dG(current_state, state, x, y, grid, T_grid, dH_LS, dS_LS, pix_dim, n, E_srf_SS, E_srf_LS)
+
+                if state == current_state:
+                    dG *= same_state_pref
+
+                #exponential with guardrails
+                exponent = -dG / (k_B * T)
+                if exponent > 10:
+                    prob = 22026.0  #~exp(10)
+                elif exponent < -10:
+                    prob = 0.000045  #~exp(-10)
+                else:
+                    prob = np.exp(exponent)
+
+
+                weights[i] = prob
+                sum_weights += prob
+
+            #---random selection---
+            if sum_weights > 0:
+                r = random.random() * sum_weights
+                cumulative = 0.0
+                new_state = current_state
+
+                for i in range(count):
+                    if weights[i] > 0:  # Skip duplicates/zeros
+                        cumulative += weights[i]
+                        if r <= cumulative:
+                            new_state = candidates[i]
+                            break
+
+                #if change in state, update things
+                if new_state != current_state:
+                    phase_new = phase(new_state)
+                    phase_old = phase(current_state)
+                    phase_changes[x, y] = phase_new - phase_old
+                    grid[x, y] = new_state
 
     return phase_changes
+
+@numba.jit(nopython=True)
+def monte_carlo_step(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref):
+    pc_1 = monte_carlo_pass(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref, 0)
+    pc_2 = monte_carlo_pass(grid, T_grid, x_dim, y_dim, pix_dim, n, dH_LS, dS_LS, E_srf_SS, E_srf_LS, k_B, same_state_pref, 1)
+
+    #combine latent heat contributions
+    return pc_1 + pc_2
 
 class Simulation:
     def __init__(self, config: SimulationConfig):
@@ -215,7 +225,7 @@ class Simulation:
         self.T_grid = np.ones_like(self.grid, dtype=np.float64) * config.T_initial
         self.phase_changes = np.zeros_like(self.grid, dtype=np.float64)
 
-        self.T_grid_diff = np.zeros_like(self.grid, dtype=np.float64)
+        self.T_grid_dif = np.zeros_like(self.grid, dtype=np.float64)
 
         # History
         self.T_history = []
@@ -235,46 +245,10 @@ class Simulation:
         """1 simulation step: monte carlo + temperature"""
 
         #---monte carlo growth---
-
-        # 1. Select Random Subset (e.g., 5% of pixels)
-        total_pixels = self.cfg.x_dim * self.cfg.y_dim
-        batch_size = int(total_pixels * 0.05)
-
-        # Use NumPy to efficiently select unique indices
-        # Note: This runs in object mode (outside JIT) or requires objmode block
-        flat_indices = np.random.choice(total_pixels, batch_size, replace=False)
-
-        # Convert to (x, y) coordinates
-        xs = flat_indices // self.cfg.y_dim
-        ys = flat_indices % self.cfg.y_dim
-
-        # 2. Split into Red and Black batches
-        # Red: (x+y) is even, Black: (x+y) is odd
-        mask_red = (xs + ys) % 2 == 0
-        mask_black = ~mask_red
-
-        # Create coordinate arrays shape (N, 2)
-        red_coords = np.column_stack((xs[mask_red], ys[mask_red]))
-        black_coords = np.column_stack((xs[mask_black], ys[mask_black]))
-
-        # 3. Run Parallel Updates Sequentially
-        # Pass 1: Update Red Pixels
-        pc_red = monte_carlo_step(
-            self.grid, self.T_grid, red_coords, self.cfg.x_dim, self.cfg.y_dim,
-            self.cfg.pix_dim, self.cfg.n, self.cfg.dH_LS, self.cfg.dS_LS,
-            self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
-        )
-
-        # Pass 2: Update Black Pixels
-        pc_black = monte_carlo_step(
-            self.grid, self.T_grid, black_coords, self.cfg.x_dim, self.cfg.y_dim,
-            self.cfg.pix_dim, self.cfg.n, self.cfg.dH_LS, self.cfg.dS_LS,
-            self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
-        )
-
-        # Combine changes for temperature step
-        self.phase_changes = pc_red + pc_black
-
+        if len(self.T_history) % 1 == 0: #update once every 15 temperature updates
+            self.phase_changes = monte_carlo_step(self.grid, self.T_grid, self.cfg.x_dim, self.cfg.y_dim, self.cfg.pix_dim, self.cfg.n,
+                self.cfg.dH_LS, self.cfg.dS_LS, self.cfg.E_srf_SS, self.cfg.E_srf_LS, self.cfg.k_B, self.cfg.same_state_pref
+            )
 
         #---thermal update---
         self.T_grid = update_temperature(
@@ -282,7 +256,8 @@ class Simulation:
             self.cfg.pix_dim, self.cfg.density, self.cfg.dH_LS, self.cfg.dt, self.cfg.shc, self.cfg.q_reduction
         )
 
-        self.T_grid_diff = self.T_grid.copy() - np.min(self.T_grid)
+        #update temperature difference grid (difference from mean)
+        self.T_grid_dif = self.T_grid - np.mean(self.T_grid)
 
         #---history logging---
         self.T_history.append(self.T_grid.copy())  # Use copy!

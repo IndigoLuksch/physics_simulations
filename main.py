@@ -1,20 +1,31 @@
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
-from tqdm import tqdm
-import sys
+from tqdm import tqdm #progres bar
+import sys #to exit if error occurs
+import time #to calculate processing time
+import datetime #for saving file
+import os
 
 import config
 from config import SimulationConfig
 from physics import Simulation
 
 #---setup configuration---
+start_time = time.time()
+
 # You can change 'Al' to other materials if you implemented them
 cfg = SimulationConfig.from_material('Al')
 sim = Simulation(cfg)
 
-print(f"Simulation Initialized: {cfg.x_dim}x{cfg.y_dim} grid")
-print(f"Physics Steps per Frame: {cfg.steps_per_frame}")
+print(f"Simulation initialised: {cfg.x_dim}x{cfg.y_dim} grid")
+print(f"Physics steps per frame: {cfg.steps_per_frame}")
+
+date_time = datetime.datetime.now()
+folder = date_time.strftime("%Y-%m-%d_%H%M")
+folder_path = config.OUTPUTS_DIR + f"/{folder}"
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
 
 #---setup visualisation---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -28,11 +39,18 @@ ax1.set_title("Grain Growth Simulation")
 ax1.axis('off')
 
 #temperature
-im_temp = ax2.imshow(sim.T_grid_diff, cmap='plasma', vmin=0)
+im_temp = ax2.imshow(sim.T_grid, cmap='plasma', vmin=0)
 plt.title('Temperature')
 plt.colorbar(im_temp, ax=ax2, label='Temperature / K')
 text = ax2.text(0,33,[])
 ax2.axis('off')
+'''
+#temperature difference 
+im_temp_dif = ax3.imshow(sim.T_grid_dif, cmap='plasma', vmin=0, vmax = 0.01)
+plt.title('Temperature difference from mean')
+plt.colorbar(im_temp_dif, ax=ax3, label='Temperature / K')
+ax3.axis('off')
+'''
 
 #progress bar
 total_frames = int(cfg.ani_duration * cfg.ani_fps)
@@ -66,15 +84,25 @@ ani = FuncAnimation(
     blit=True
 )
 
-# Save to GIF (requires Pillow) or MP4 (requires FFmpeg)
+#save mp4
 print(f"Saving animation...")
-filename = 'grain_growth.mp4'
-full_path = config.OUTPUTS_DIR + f"/{filename}"
-ani.save(full_path,
+mp4_filename = 'grain_growth.mp4'
+mp4_full_path = f"{folder_path}/{mp4_filename}"
+ani.save(mp4_full_path,
          writer='ffmpeg',
          fps=120,
          #progress_callback=update_progress,
          dpi=150) #resolution
 pbar.close()
+
+end_time = time.time()
+
+#save parameters
+processing_time = round((end_time - start_time)/60)
+parameters_filename = 'parameters.txt'
+parameters_full_path = f"{folder_path}/{parameters_filename}"
+parameters_string = f"Material: {cfg.material_name}\nProcessing time: {processing_time}\nSimulation time: {cfg.simulation_time}s\ndt: {cfg.dt}s\nx, y dimensions: {cfg.x_dim}x{cfg.y_dim}\nPixel size: {cfg.pix_dim}\nPhysics steps per frame: {cfg.steps_per_frame}"
+with open(parameters_full_path, 'w') as f:
+    f.write(parameters_string)
 
 print(f"last temperature value at [0,10]: {sim.T_history.copy()[-1][0,10]}\ntemperature drop here = {cfg.T_initial - sim.T_history.copy()[-1][0,10]}")

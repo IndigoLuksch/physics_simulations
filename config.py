@@ -13,11 +13,11 @@ for directory in [OUTPUTS_DIR, PROJECT_ROOT]:
 @dataclass
 class SimulationConfig:
     #---simulation parameters---
-    x_dim: int = 1000
-    y_dim: int = 1000
+    x_dim: int = 200
+    y_dim: int = 200
     pix_dim: float = 2e-5
     dt: float = 5e-7
-    simulation_time: float = 0.06
+    simulation_time: float = 0.05
 
     #---animation and tuning---
     ani_fps: float = 60
@@ -28,13 +28,16 @@ class SimulationConfig:
     same_state_pref: float = 10.0
 
     #---material properties (default: Al)---
+    material_name: str = 'Placeholder'
     T_melt: float = 933.0  # K
     T_initial: float = T_melt + 3  # K
     T_mould: float = 303.0  # K
 
     k_LS: float = 230.0  # W/(m*K)
-    h_Sm: float = 0.5
-    h_Lm: float = 1.3
+    #h_Sm: float = 0.5 actual value
+    #h_Lm: float = 1.3 actual value
+    h_Sm: float = 5
+    h_Lm: float = 13
     dH_LS: float = 1.067e9  # J/m^3
 
     E_srf_SS: float = 0.3
@@ -63,6 +66,7 @@ class SimulationConfig:
     def from_material(cls, material_name: str):
         if material_name == 'Al':
             return cls(
+                material_name=material_name,
                 T_melt=933,
                 k_LS=230,
                 h_Sm=0.5,
@@ -71,7 +75,7 @@ class SimulationConfig:
                 E_srf_SS=0.3,
                 density=2700,
                 shc=921,
-                T_initial=933 + 0.005,
+                T_initial=933 + 1e-8,
                 T_mould=303
             )
         raise ValueError(f"Unknown material: {material_name}")
