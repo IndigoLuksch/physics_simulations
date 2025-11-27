@@ -17,7 +17,7 @@ class SimulationConfig:
     y_dim: int = 200
     pix_dim: float = 2e-5
     dt: float = 5e-7
-    simulation_time: float = 0.05
+    simulation_time: float = 0.0000001
 
     #---animation and tuning---
     ani_fps: float = 60
@@ -34,10 +34,8 @@ class SimulationConfig:
     T_mould: float = 303.0  # K
 
     k_LS: float = 230.0  # W/(m*K)
-    #h_Sm: float = 0.5 actual value
-    #h_Lm: float = 1.3 actual value
-    h_Sm: float = 5
-    h_Lm: float = 13
+    h_Sm: float = 0.5
+    h_Lm: float = 1.3
     dH_LS: float = 1.067e9  # J/m^3
 
     E_srf_SS: float = 0.3
@@ -63,14 +61,17 @@ class SimulationConfig:
         self.E_srf_LS = 0.2 * self.E_srf_SS
 
     @classmethod
+    #always weight percentage compositions
     def from_material(cls, material_name: str):
         if material_name == 'Al':
             return cls(
                 material_name=material_name,
                 T_melt=933,
                 k_LS=230,
-                h_Sm=0.5,
-                h_Lm=1.3,
+                #h_Sm=0.5, <-- actual
+                #h_Lm=1.3, <-- actual
+                h_Sm=100,
+                h_Lm=230,
                 dH_LS=1.067e9,
                 E_srf_SS=0.3,
                 density=2700,

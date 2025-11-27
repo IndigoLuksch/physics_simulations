@@ -12,6 +12,8 @@ from config import SimulationConfig
 from physics import Simulation
 
 #---setup configuration---
+notes = "h_Lm, h_Sm are 200x higher than should be"
+
 start_time = time.time()
 
 # You can change 'Al' to other materials if you implemented them
@@ -97,11 +99,17 @@ pbar.close()
 
 end_time = time.time()
 
-#save parameters
+#prepare parameters for saving
 processing_time = round((end_time - start_time)/60)
+parameters = str(cfg.__dict__.copy())
+parameters = parameters.replace(",", '\n')
+parameters = parameters.replace('{', '')
+parameters = parameters.replace('}', '')
+
+#save parameters
 parameters_filename = 'parameters.txt'
 parameters_full_path = f"{folder_path}/{parameters_filename}"
-parameters_string = f"Material: {cfg.material_name}\nProcessing time: {processing_time}\nSimulation time: {cfg.simulation_time}s\ndt: {cfg.dt}s\nx, y dimensions: {cfg.x_dim}x{cfg.y_dim}\nPixel size: {cfg.pix_dim}\nPhysics steps per frame: {cfg.steps_per_frame}"
+parameters_string = f"Material: {cfg.material_name}\nProcessing time: {processing_time} min\nPhysics steps per frame: {cfg.steps_per_frame}\n\nNotes: {notes}\n\nAll parameters:\n\n{parameters}"
 with open(parameters_full_path, 'w') as f:
     f.write(parameters_string)
 
